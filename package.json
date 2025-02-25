@@ -1,0 +1,11 @@
+{
+  "name": "battleship-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "concurrently \"npm start --prefix client\" \"npm start --prefix server\""
+  },
+  "devDependencies": {
+    "concurrently": "^7.6.0"
+  }
+}

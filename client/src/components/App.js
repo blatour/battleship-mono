@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import './App.css';
+import SomeComponent from './SomeComponent';
+import AnotherComponent from './AnotherComponent';
 
 const GRID_SIZE = 10;
 
@@ -51,6 +53,8 @@ const App = () => {
       {!gameStarted && host && <button onClick={startGame}>Start Game</button>}
       {winner && <h2>{winner} wins!</h2>}
       <div className="grid">{renderGrid()}</div>
+      <SomeComponent />
+      <AnotherComponent />
     </div>
   );
 };

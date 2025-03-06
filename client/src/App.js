@@ -13,7 +13,7 @@ const SHIPS = [
 ];
 
 const App = () => {
-  const [host] = useState(true);
+  const [host, setHost] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
   const [grid, setGrid] = useState(Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(null)));
   const [ships, setShips] = useState([]);
@@ -21,67 +21,73 @@ const App = () => {
   const [orientation, setOrientation] = useState('horizontal');
   const [selectedShip, setSelectedShip] = useState(null);
   const [turn, setTurn] = useState('host');
-  const [winner] = useState(null);
+  const [winner, setWinner] = useState(null);
   const [ws, setWs] = useState(null);
   const [gameId, setGameId] = useState(null);
-  const [gameState, setGameState] = useState('waiting');
+  const [gameState, setGameState] = useState('menu');
 
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:8080');
-    setWs(socket);
+    const connectWebSocket = () => {
+      const socket = new WebSocket('ws://localhost:8080');
+      setWs(socket);
 
-    socket.onopen = () => {
-      console.log('WebSocket connection opened');
-      // Send a ping message every 30 seconds
-      const pingInterval = setInterval(() => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'ping' }));
-        }
-      }, 30000);
+      socket.onopen = () => {
+        console.log('WebSocket connection opened');
+      };
 
-      // Clear the interval when the socket closes
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleMessage(data);
+      };
+
+      socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
       socket.onclose = () => {
-        clearInterval(pingInterval);
-        console.log('WebSocket connection closed');
+        console.log('WebSocket connection closed. Attempting to reconnect...');
+        setTimeout(connectWebSocket, 3000); // Attempt to reconnect after 3 seconds
       };
     };
 
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      switch (data.type) {
-        case 'gameCreated':
-          setGameId(data.gameId);
-          break;
-        case 'gameReady':
-          setGameState('ready');
-          setTurn(data.turn);
-          break;
-        case 'updateGame':
-          setGrid(data.grid);
-          setTurn(data.turn);
-          break;
-        case 'error':
-          alert(data.message);
-          break;
-        default:
-          console.log('Unknown message type:', data.type);
-      }
-    };
-
-    socket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
+    connectWebSocket();
 
     return () => {
-      socket.close();
+      if (ws) {
+        ws.close();
+      }
     };
   }, []);
 
+  const handleMessage = (data) => {
+    switch (data.type) {
+      case 'gameCreated':
+        setGameId(data.gameId);
+        setHost(true);
+        setGameState('placingShips');
+        break;
+      case 'gameReady':
+        setGameState('ready');
+        setTurn(data.turn);
+        break;
+      case 'updateGame':
+        setGrid(data.grid);
+        setTurn(data.turn);
+        break;
+      case 'error':
+        alert(data.message);
+        break;
+      default:
+        console.log('Unknown message type:', data.type);
+    }
+  };
+
   const createGame = () => {
     if (ws && ws.readyState === WebSocket.OPEN) {
+      console.log('Creating a new game...');
       ws.send(JSON.stringify({ type: 'createGame' }));
     } else {
-      console.error('WebSocket is not open');
+      console.error('WebSocket is not open. Current state:', ws?.readyState);
     }
   };
 
@@ -96,6 +102,7 @@ const App = () => {
   const startGame = () => {
     if (currentShipIndex >= SHIPS.length) {
       setGameStarted(true);
+      setGameState('playing');
       console.log('Game started');
     } else {
       console.log('Please place all ships before starting the game');
@@ -108,24 +115,17 @@ const App = () => {
   };
 
   const placeShip = (x, y) => {
-    console.log(`Attempting to place ship at (${x}, ${y})`);
-    console.log(`Current ship index: ${currentShipIndex}, Total ships: ${SHIPS.length}`);
-    console.log(`Game started: ${gameStarted}`);
-
     if (host && currentShipIndex < SHIPS.length) {
       const ship = SHIPS[currentShipIndex];
-      console.log(`Placing ${ship.name} of size ${ship.size}`);
-      const newGrid = grid.map(row => [...row]); // Create a deep copy of the grid
+      const newGrid = grid.map(row => [...row]);
       const newShips = [...ships];
 
-      // Check if the ship can be placed
       let canPlace = true;
       for (let i = 0; i < ship.size; i++) {
         const newX = orientation === 'horizontal' ? x : x + i;
         const newY = orientation === 'horizontal' ? y + i : y;
         if (newX >= GRID_SIZE || newY >= GRID_SIZE || newGrid[newX][newY] !== null) {
           canPlace = false;
-          console.log(`Cannot place ${ship.name} at (${newX}, ${newY}) - Out of bounds or occupied`);
           break;
         }
       }
@@ -140,12 +140,7 @@ const App = () => {
         setGrid(newGrid);
         setShips(newShips);
         setCurrentShipIndex(currentShipIndex + 1);
-        console.log(`Placed ${ship.name} at (${x}, ${y})`);
-      } else {
-        console.log('Cannot place ship here');
       }
-    } else {
-      console.log('Not allowed to place ship: either game started or all ships placed');
     }
   };
 
@@ -160,16 +155,14 @@ const App = () => {
   const moveShip = (x, y) => {
     if (selectedShip) {
       console.log(`Moving ship ${selectedShip.name} to (${x}, ${y})`);
-      const newGrid = grid.map(row => [...row]); // Create a deep copy of the grid
+      const newGrid = grid.map(row => [...row]);
 
-      // Remove the ship from its current position
       for (let i = 0; i < selectedShip.size; i++) {
         const oldX = selectedShip.orientation === 'horizontal' ? selectedShip.x : selectedShip.x + i;
         const oldY = selectedShip.orientation === 'horizontal' ? selectedShip.y + i : selectedShip.y;
         newGrid[oldX][oldY] = null;
       }
 
-      // Check if the ship can be moved to the new position
       let canMove = true;
       for (let i = 0; i < selectedShip.size; i++) {
         const newX = selectedShip.orientation === 'horizontal' ? x : x + i;
@@ -208,33 +201,45 @@ const App = () => {
   return (
     <div className="App">
       <h1>Battleship Game</h1>
-      {gameState === 'waiting' && (
+      {gameState === 'menu' && (
         <div>
-          <button onClick={createGame}>Create Game</button>
+          <button onClick={createGame} disabled={ws?.readyState !== WebSocket.OPEN}>Start a New Game</button>
           <input type="text" placeholder="Enter Game ID" onBlur={(e) => joinGame(e.target.value)} />
         </div>
       )}
       {gameId && <h2>Your Game ID: {gameId}</h2>}
+      {gameState === 'placingShips' && (
+        <div>
+          <h2>Place your ships</h2>
+          <Grid
+            grid={grid}
+            placeShip={placeShip}
+            selectedShip={selectedShip}
+          />
+          <ControlPanel
+            currentShipIndex={currentShipIndex}
+            ships={SHIPS}
+            toggleOrientation={toggleOrientation}
+            orientation={orientation}
+            startGame={startGame}
+            gameStarted={gameStarted}
+          />
+        </div>
+      )}
       {gameState === 'ready' && <h2>Game Ready! {turn === (host ? 'host' : 'guest') ? 'Your turn' : 'Opponent\'s turn'}</h2>}
-      <Grid
-        grid={grid}
-        placeShip={placeShip}
-        moveShip={moveShip}
-        selectShip={selectShip}
-        selectedShip={selectedShip}
-        makeMove={makeMove}
-      />
-      <ControlPanel
-        currentShipIndex={currentShipIndex}
-        ships={SHIPS}
-        toggleOrientation={toggleOrientation}
-        orientation={orientation}
-        startGame={startGame}
-        gameStarted={gameStarted}
-      />
+      {gameState === 'playing' && (
+        <div>
+          <Grid
+            grid={grid}
+            makeMove={makeMove}
+            selectedShip={selectedShip}
+          />
+        </div>
+      )}
       {winner && <h2>{winner} wins!</h2>}
     </div>
   );
 };
 
 export default App;
+

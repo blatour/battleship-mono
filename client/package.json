@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "battleship-monorepo": "file:..",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-scripts": "^3.0.1"

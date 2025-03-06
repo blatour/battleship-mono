@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "concurrently \"npm start --prefix client\" \"npm start --prefix server\""
+    "start": "concurrently \"npm start --prefix client\" \"npm start --prefix server\"",
+    "install:all": "concurrently \"npm install --prefix client\" \"npm install --prefix server\""
   },
   "devDependencies": {
     "concurrently": "^7.6.0"

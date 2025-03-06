@@ -29,6 +29,7 @@ db.connect((err) => {
 db.query(`
   CREATE TABLE IF NOT EXISTS game_state (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    gameId VARCHAR(255) UNIQUE,
     host BOOLEAN,
     gameStarted BOOLEAN,
     grid JSON,
@@ -92,12 +93,37 @@ wss.on('connection', (ws) => {
 
   ws.on('message', (message) => {
     const data = JSON.parse(message);
-    if (data.type === 'ping') {
-      console.log('Received ping from client');
-      // Optionally, send a pong response
-      ws.send(JSON.stringify({ type: 'pong' }));
+    console.log('Received:', data);
+
+    switch (data.type) {
+      case 'createGame':
+        console.log('Creating a new game on the server...');
+        const gameId = Math.random().toString(36).substring(2, 15);
+        games[gameId] = { players: [ws], state: 'waiting', turn: 'host', grid: Array(10).fill(Array(10).fill(null)) };
+        ws.send(JSON.stringify({ type: 'gameCreated', gameId }));
+        break;
+      case 'joinGame':
+        const game = games[data.gameId];
+        if (game && game.players.length < 2) {
+          game.players.push(ws);
+          game.state = 'ready';
+          game.players.forEach((player) => player.send(JSON.stringify({ type: 'gameReady', turn: game.turn })));
+        } else {
+          ws.send(JSON.stringify({ type: 'error', message: 'Game not found or full' }));
+        }
+        break;
+      case 'makeMove':
+        const currentGame = games[data.gameId];
+        if (currentGame && currentGame.turn === data.player) {
+          const { x, y } = data.move;
+          currentGame.grid[x][y] = data.player === 'host' ? 'X' : 'O';
+          currentGame.turn = currentGame.turn === 'host' ? 'guest' : 'host';
+          currentGame.players.forEach((player) => player.send(JSON.stringify({ type: 'updateGame', grid: currentGame.grid, turn: currentGame.turn })));
+        }
+        break;
+      default:
+        console.log('Unknown message type:', data.type);
     }
-    // Handle other message types
   });
 
   ws.on('close', () => {
